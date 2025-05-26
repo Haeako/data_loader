@@ -7,7 +7,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -DNDEBUG")
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 # LibTorch
-set(Torch_DIR "/mlcv2/WorkingSpace/Personal/quannh/Project/Project/Track4_AIC_FishEyecamera/code/model/DEIM/lib/libtorch/share/cmake/Torch")
+set(Torch_DIR "/mlcv2/WorkingSpace/Personal/quannh/Project/Project/Track4_AIC_FishEyecamera/code/data_loader/lib/libtorch/share/cmake/Torch")
 find_package(Torch REQUIRED)
 
 include_directories(/usr/local/include)  # hoặc /usr/include nếu spng.h ở đó
@@ -90,9 +90,7 @@ set(LIBS
 add_executable(sanity_check sanity_check.cpp)
 target_link_libraries(sanity_check PRIVATE ${LIBS})
 
-set_target_properties(sanity_check PROPERTIES
-    INSTALL_RPATH "${Torch_DIR}/../lib"
-)
+
 
 message(STATUS "=== Build configuration ===")
 message(STATUS "Torch include dirs: ${TORCH_INCLUDE_DIRS}")

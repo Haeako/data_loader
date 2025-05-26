@@ -9,7 +9,6 @@
 #include <spng.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <complex.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <chrono>
@@ -68,100 +67,77 @@ public:
 };
 
 // Global buffer pool for image decoding (32MB per buffer should be enough for most images)
-/* ================================= var define ============================*/
 static BufferPool g_buffer_pool(BUFFER_POOL_SIZE, 32 * 1024 * 1024);
-int fd;
-struct stat st;
-void *map = nullptr;
-spng_ctx *ctx = nullptr;
-size_t file_size;
-spng_format fmt = SPNG_FMT_RGB8;
-size_t out_size;
-int flags = 0 ;
-int height, width;
-// SPNG decoder with optimized settings
-std::vector<uint8_t>&  out_buf = g_buffer_pool.get_buffer();
 
+// SPNG decoder with optimized settings
 cv::Mat decode_png_spng(const std::string &filename) {
-    // auto start = std::chrono::high_resolution_clock::now();
-    fd= open(filename.c_str(), O_RDONLY );
+    int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) { perror("open"); return {}; }
     
-    if (fstat(fd, &st) < 0) {
-        std::cout << "fstat failed: " << strerror(errno) << std::endl; 
-        perror("fstat"); 
-        close(fd);
-         return {}; 
-    }
-    file_size = st.st_size;
+    struct stat st;
+    if (fstat(fd, &st) < 0) { perror("fstat"); close(fd); return {}; }
+    size_t file_size = st.st_size;
     
-    map = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    void *map = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
-    // if (map == MAP_FAILED) {
-    //     std::cerr << "mmap failed: " << strerror(errno) << std::endl;
-    //      perror("mmap"); return {}; 
-    //     }
+    if (map == MAP_FAILED) { perror("mmap"); return {}; }
 
-    ctx = spng_ctx_new(SPNG_CTX_IGNORE_ADLER32);
-    // if (!ctx) {
-    //     std::cerr << "Failed to create SPNG context" << std::endl;
-    //     munmap(map, file_size);
-    //     return {};
-    // }
+    spng_ctx *ctx = spng_ctx_new(SPNG_CTX_IGNORE_ADLER32);
+    if (!ctx) {
+        std::cerr << "Failed to create SPNG context" << std::endl;
+        munmap(map, file_size);
+        return {};
+    }
 
     // Set decoding options for speed
     // No spng_set_option for SPNG_DECODE_USE_TRNS; handled via decode flags below
     spng_set_png_buffer(ctx, reinterpret_cast<uint8_t*>(map), file_size);
     
     spng_ihdr ihdr;
-    spng_get_ihdr(ctx, &ihdr);
-    // if ()) {
-    //     std::cerr << "spng_get_ihdr failed" << std::endl;
-    //     spng_ctx_free(ctx);
-    //     munmap(map, file_size);
-    //     return {};
-    // }
+    if (spng_get_ihdr(ctx, &ihdr)) {
+        std::cerr << "spng_get_ihdr failed" << std::endl;
+        spng_ctx_free(ctx);
+        munmap(map, file_size);
+        return {};
+    }
 
     // Get a buffer from the pool
-    out_buf = g_buffer_pool.get_buffer();
+    auto& out_buf = g_buffer_pool.get_buffer();
     
+    spng_format fmt = SPNG_FMT_RGB8;
+    size_t out_size;
     spng_decoded_image_size(ctx, fmt, &out_size);
     
     if (out_buf.size() < out_size) {
         out_buf.resize(out_size);
     }
-    
+
     // Use optimized decoding flags
-    auto start = std::chrono::high_resolution_clock::now();
+    int flags = SPNG_DECODE_TRNS | SPNG_DECODE_GAMMA;
     int err = spng_decode_image(ctx, out_buf.data(), out_size, fmt, flags);
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Decode time: " << elapsed.count() << " seconds" << std::endl;
-    // if (err != 0) {
-    //     const char* msg = spng_strerror(err);
-    //     std::cerr << "spng_decode_image failed: " << msg << std::endl;
-    //     spng_ctx_free(ctx);
-    //     munmap(map, file_size);
-    //     g_buffer_pool.release_buffer(out_buf);
-    //     return {};
-    // }
+    if (err != 0) {
+        const char* msg = spng_strerror(err);
+        std::cerr << "spng_decode_image failed: " << msg << std::endl;
+        spng_ctx_free(ctx);
+        munmap(map, file_size);
+        g_buffer_pool.release_buffer(out_buf);
+        return {};
+    }
 
     spng_ctx_free(ctx);
     munmap(map, file_size);
 
-    width = ihdr.width;
-    height = ihdr.height;
+    int width = ihdr.width;
+    int height = ihdr.height;
     
     // Create OpenCV matrix directly in RGB format (avoid BGR conversion)
     cv::Mat img_rgb(height, width, CV_8UC3, out_buf.data());
-    // cv::Mat result = img_rgb.clone();  // Clone to copy data
+    cv::Mat result = img_rgb.clone();  // Clone to copy data
     
     // Release buffer back to pool
     g_buffer_pool.release_buffer(out_buf);
-    // auto end = std::chrono::high_resolution_clock::now();
-    // std::chrono::duration<double> elapsed = end - start;
-    // std::cout << "Decode time: " << elapsed.count() << " seconds" << std::endl;
-    return img_rgb;
+    
+    return result;
 }
 
 // Pre-allocate GPU buffers to avoid memory allocation during processing
@@ -174,7 +150,7 @@ private:
     int max_height = 0;
 
 public:
-    GPUBufferManager(int initial_width = 3220, int initial_height = 3080) {
+    GPUBufferManager(int initial_width = 1920, int initial_height = 1080) {
         // Pre-allocate with a reasonable size
         input_buffer.create(initial_height, initial_width, CV_8UC3);
         rgb_buffer.create(initial_height, initial_width, CV_8UC3);
@@ -236,51 +212,47 @@ int main(int argc, char** argv) {
         cv_stream.waitForCompletion();
     }
 
-    // // Collect all image paths first
-    // std::vector<std::string> image_paths;
-    // for () {
-    //     if (!entry.is_regular_file()) continue;
-    //     if (entry.path().extension() == ".png") {
-    //         image_paths.push_back(entry.path().string());
-    //     }
-    // }
+    // Collect all image paths first
+    std::vector<std::string> image_paths;
+    for (const auto &entry : std::filesystem::directory_iterator(folder)) {
+        if (!entry.is_regular_file()) continue;
+        if (entry.path().extension() == ".png") {
+            image_paths.push_back(entry.path().string());
+        }
+    }
 
     int count = 0;
-    cv::cuda::GpuMat gpu_input, gpu_rgb, gpu_resized;
     auto t_start = std::chrono::high_resolution_clock::now();
-    void* ptr;
-    for (const auto &entry : std::filesystem::directory_iterator(folder)) {
-        cv::Mat img = decode_png_spng(entry.path().string());
-        // if (img.empty()) continue;
 
-        // auto start = std::chrono::high_resolution_clock::now();
+    for (const auto& path : image_paths) {
+        cv::Mat img = decode_png_spng(path);
+        if (img.empty()) continue;
+
         // Ensure GPU buffers are large enough
         gpu_buffers.ensure_size(img.cols, img.rows);
         
         // Process in GPU with zero-copy when possible
-        gpu_input = gpu_buffers.get_input_buffer();
-        gpu_rgb = gpu_buffers.get_rgb_buffer();
-        gpu_resized = gpu_buffers.get_resized_buffer();
+        auto& gpu_input = gpu_buffers.get_input_buffer();
+        auto& gpu_rgb = gpu_buffers.get_rgb_buffer();
+        auto& gpu_resized = gpu_buffers.get_resized_buffer();
         
         gpu_input.upload(img, cv_stream);
         
         // Skip BGR2RGB conversion if the image is already in RGB format
         cv::cuda::resize(gpu_input, gpu_resized, 
                       cv::Size(OUTPUT_WIDTH, OUTPUT_HEIGHT),
-                      0, 0, cv::INTER_NEAREST, cv_stream);
+                      0, 0, cv::INTER_CUBIC, cv_stream);
         cv_stream.waitForCompletion();
 
         // Use at::cuda::getCurrentCUDAStream() to share CUDA stream with PyTorch
         at::cuda::CUDAStream torch_stream = at::cuda::getCurrentCUDAStream();
         cudaStreamSynchronize(torch_stream);
-        // auto end = std::chrono::high_resolution_clock::now();
-        // std::chrono::duration<double> elapsed = end - start;
-        // std::cout << "Processing time: " << elapsed.count() << " seconds" << std::endl;
-        ptr = static_cast<void*>(gpu_resized.ptr<uchar>());
+
+        auto ptr = static_cast<void*>(gpu_resized.ptr<uchar>());
         auto tensor = torch::from_blob(ptr,
                                     {1, 3, OUTPUT_HEIGHT, OUTPUT_WIDTH},
                                     torch::TensorOptions().dtype(torch::kUInt8).device(torch::kCUDA))
-                    .to(torch::kFloat32)
+                    .to(torch::kFloat16)
                     .div_(255.0);
 
         // Force synchronization only when necessary
@@ -292,7 +264,7 @@ int main(int argc, char** argv) {
     auto t_end = std::chrono::high_resolution_clock::now();
     double elapsed = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count() / 1e6;
     double fps = count / elapsed;
-    std::printf("Processed images in %.2f s -> FPS = %.2f\n", elapsed, fps);
+    std::printf("Processed %d images in %.2f s -> FPS = %.2f\n", count, elapsed, fps);
 
     // Proper cleanup
     cv_stream.waitForCompletion();
