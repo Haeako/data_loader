@@ -1,13 +1,13 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.18)
 project(sanity_checke LANGUAGES C CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}  -Ofast -march=native -DNDEBUG -ffast-math")
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 # LibTorch
-set(Torch_DIR "/mlcv2/WorkingSpace/Personal/quannh/Project/Project/Track4_AIC_FishEyecamera/code/data_loader/lib/libtorch/share/cmake/Torch")
+set(Torch_DIR "lib/libtorch/share/cmake/Torch")
 find_package(Torch REQUIRED)
 
 include_directories(/usr/local/include)  # hoặc /usr/include nếu spng.h ở đó
@@ -19,6 +19,14 @@ find_package(SPNG REQUIRED)
 
 # CUDA
 find_package(CUDA REQUIRED)
+
+# Ví dụ trong CMakeLists.txt
+include_directories(/usr/include)
+link_directories(/usr/lib/x86_64-linux-gnu)
+
+# Khi link
+
+
 
 # OpenCV
 set(OpenCV_DIR "/usr/local/lib/cmake/opencv4" CACHE PATH "OpenCV directory")
@@ -35,13 +43,13 @@ find_path(TENSORRT_INCLUDE_DIR NvInfer.h
           $ENV{TENSORRT_HOME}/include
 )
 
-find_library(TENSORRT_LIBRARY_INFER nvinfer
-    HINTS /usr/lib
-          /usr/lib/x86_64-linux-gnu
-          /usr/local/lib
-          /opt/nvidia/tensorrt/lib
-          $ENV{TENSORRT_HOME}/lib
-)
+#find_library(TENSORRT_LIBRARY_INFER nvinfer
+#    HINTS /usr/lib
+#          /usr/lib/x86_64-linux-gnu
+#          /usr/local/lib
+#          /opt/nvidia/tensorrt/lib
+#          $ENV{TENSORRT_HOME}/lib
+#)
 
 find_library(TENSORRT_LIBRARY_ONNXPARSER nvonnxparser
     HINTS /usr/lib
@@ -58,16 +66,16 @@ find_library(TENSORRT_LIBRARY_PLUGIN nvinfer_plugin
           /opt/nvidia/tensorrt/lib
           $ENV{TENSORRT_HOME}/lib
 )
+#
+#set(TENSORRT_LIBRARIES 
+#    ${TENSORRT_LIBRARY_INFER} 
+#    ${TENSORRT_LIBRARY_ONNXPARSER} 
+#    ${TENSORRT_LIBRARY_PLUGIN}
+#)
 
-set(TENSORRT_LIBRARIES 
-    ${TENSORRT_LIBRARY_INFER} 
-    ${TENSORRT_LIBRARY_ONNXPARSER} 
-    ${TENSORRT_LIBRARY_PLUGIN}
-)
-
-if(NOT TENSORRT_LIBRARY_INFER OR NOT TENSORRT_INCLUDE_DIR)
-    message(FATAL_ERROR "TensorRT library not found. Please install TensorRT or set TENSORRT_HOME environment variable.")
-endif()
+#if(NOT TENSORRT_LIBRARY_INFER OR NOT TENSORRT_INCLUDE_DIR)
+#    message(FATAL_ERROR "TensorRT library not found. Please install TensorRT or set TENSORRT_HOME environment variable.")
+#endif()
 
 include_directories(
     ${TORCH_INCLUDE_DIRS}
@@ -85,6 +93,7 @@ set(LIBS
     ${SPNG_LIBRARIES}
     Threads::Threads
     rt
+	cudnn
 )
 
 add_executable(sanity_check sanity_check.cpp)

@@ -88,7 +88,7 @@ cv::Mat decode_png_spng(const std::string &filename) {
     if (fd < 0) { perror("open"); return {}; }
     
     if (fstat(fd, &st) < 0) {
-        std::cout << "fstat failed: " << strerror(errno) << std::endl; 
+        // std::cout << "fstat failed: " << strerror(errno) << std::endl; 
         perror("fstat"); 
         close(fd);
          return {}; 
@@ -136,7 +136,7 @@ cv::Mat decode_png_spng(const std::string &filename) {
     int err = spng_decode_image(ctx, out_buf.data(), out_size, fmt, flags);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Decode time: " << elapsed.count() << " seconds" << std::endl;
+    // std::cout << "Decode time: " << elapsed.count() << " seconds" << std::endl;
     // if (err != 0) {
     //     const char* msg = spng_strerror(err);
     //     std::cerr << "spng_decode_image failed: " << msg << std::endl;
