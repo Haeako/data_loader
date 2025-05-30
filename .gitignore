@@ -14,3 +14,5 @@ lib/libspng-0.7.4/.circleci
 perf.data
 perf.data.old
 build/
+build/Makefile
+build/sanity_check
